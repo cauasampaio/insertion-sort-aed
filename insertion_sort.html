@@ -53,8 +53,8 @@ body {
   gap: 12px;
   box-shadow: 0 6px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07);
   z-index: 100;
-  min-width: 320px;
-  max-width: 560px;
+  min-width: 380px;
+  max-width: 650px;
 }
 
 #instruction-icon { font-size: 1.5rem; flex-shrink: 0; }
@@ -408,20 +408,20 @@ const BLOCK_COLORS = [
   '#f15bb5',
 ];
 
-/* ─── Constantes de tempo (ms) — AUMENTADAS PARA MAIOR LENTIDÃO ─── */
-const T_LIFT  = 800;   // duração da fase de levantamento (era 360)
-const T_SLIDE = 1000;  // duração do deslize lateral (era 400)
-const T_SNAP  = 700;   // duração do encaixe (era 340)
-const T_PLACE = 800;   // duração da confirmação de posição (era 300)
-const T_PAUSE = 600;   // pausa entre passos no modo automático (era 120)
+/* ─── Constantes de tempo (ms) ─── */
+const T_LIFT  = 800;
+const T_SLIDE = 1000;
+const T_SNAP  = 700;
+const T_PLACE = 1200;
+const T_PAUSE = 800;
 
 /* ─── Estado global ─── */
-let arr      = [];     // valores na ordem atual
-let colorMap = {};     // valor → cor
-let sorted   = [];     // array de referência ordenado
-let steps    = [];     // sequência de operações pré-computada
-let cursor   = 0;      // índice do próximo passo
-let busy     = false;  // trava de animação
+let arr      = [];
+let colorMap = {};
+let sorted   = [];
+let steps    = [];
+let cursor   = 0;
+let busy     = false;
 
 /* ─── Referências DOM ─── */
 const stage   = document.getElementById('blocks-container');
@@ -445,7 +445,6 @@ function init() {
   syncButtons();
 }
 
-/* ─── Fisher-Yates in-place ─── */
 function fisherYates(a) {
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -455,18 +454,31 @@ function fisherYates(a) {
 }
 
 /* ════════════════════════════════════════
-   PRÉ-COMPUTAÇÃO DOS PASSOS
+   PRÉ-COMPUTAÇÃO DOS PASSOS (Lógica Real)
 ════════════════════════════════════════ */
 function precompute(a) {
   const ops = [];
   for (let i = 1; i < a.length; i++) {
     let j = i;
-    while (j > 0 && a[j - 1] > a[j]) {
-      ops.push({ op: 'swap', i: j, j: j - 1 });
-      [a[j], a[j - 1]] = [a[j - 1], a[j]];
-      j--;
+    // Pega o elemento atual (chave)
+    ops.push({ op: 'pick', i: i, val: a[i] });
+    
+    while (j > 0) {
+      const valKey = a[j];
+      const valPrev = a[j-1];
+      
+      if (valPrev > valKey) {
+        // Compara e decide trocar
+        ops.push({ op: 'compare', i: j, j: j-1, valI: valKey, valJ: valPrev, result: 'swap' });
+        [a[j], a[j-1]] = [a[j-1], a[j]];
+        j--;
+      } else {
+        // Compara e decide parar
+        ops.push({ op: 'compare', i: j, j: j-1, valI: valKey, valJ: valPrev, result: 'stop' });
+        break;
+      }
     }
-    ops.push({ op: 'place', i: j });
+    ops.push({ op: 'place', i: j, val: a[j] });
   }
   ops.push({ op: 'done' });
   return ops;
@@ -521,24 +533,20 @@ function makeBlock(val) {
   return wrap;
 }
 
-function slotX(n) {
-  return n * (BLOCK_W + GAP);
-}
-
-function blockByVal(v) {
-  return stage.querySelector(`.lego-block[data-value="${v}"]`);
-}
-
-function blockAt(idx) {
-  return blockByVal(arr[idx]);
-}
+function slotX(n) { return n * (BLOCK_W + GAP); }
+function blockByVal(v) { return stage.querySelector(`.lego-block[data-value="${v}"]`); }
 
 function refreshGlows() {
-  arr.forEach((val, i) => {
-    const el = blockByVal(val);
-    if (!el) return;
+  const blocks = Array.from(stage.querySelectorAll('.lego-block'));
+  // No Insertion Sort, a sublista à esquerda do cursor está "ordenada entre si"
+  // Mas o glow verde/vermelho original baseia-se na posição final global.
+  // Vamos manter a lógica original de glow para clareza do objetivo final.
+  blocks.forEach((el) => {
+    const val = parseInt(el.dataset.value);
+    // Encontrar índice atual baseado no left
+    const currentIdx = Math.round(parseFloat(el.style.left) / (BLOCK_W + GAP));
     el.classList.remove('status-correct', 'status-wrong');
-    el.classList.add(val === sorted[i] ? 'status-correct' : 'status-wrong');
+    el.classList.add(val === sorted[currentIdx] ? 'status-correct' : 'status-wrong');
   });
 }
 
@@ -560,76 +568,75 @@ async function runStep() {
 
   const s = steps[cursor++];
 
-  if (s.op === 'swap')  await doSwap(s.i, s.j);
-  if (s.op === 'place') await doPlace(s.i);
-  if (s.op === 'done')  await doDone();
+  if (s.op === 'pick')    await doPick(s.i, s.val);
+  if (s.op === 'compare') await doCompare(s.i, s.j, s.valI, s.valJ, s.result);
+  if (s.op === 'place')   await doPlace(s.i, s.val);
+  if (s.op === 'done')    await doDone();
 
   busy = false;
   syncButtons();
 }
 
-async function doSwap(posA, posB) {
-  const elA  = blockAt(posA);
-  const elB  = blockAt(posB);
-  const valA = arr[posA];
-  const valB = arr[posB];
+/* ─── Ações de Animação ─── */
 
-  /* ── FASE 1: Desencaixar ── */
-  say('⬆️', `Desencaixando bloco <strong>${valA}</strong>...`);
-  elA.classList.add('active');
-  elA.style.transition = `bottom ${T_LIFT}ms cubic-bezier(.4,0,.2,1)`;
-  elA.style.bottom = '110px';
-  elA.style.zIndex = '50';
-  await wait(T_LIFT + 200); // Pausa extra para leitura
-
-  /* ── FASE 2: Mover ── */
-  say('➡️', `Movendo <strong>${valA}</strong> → comparando com <strong>${valB}</strong>...`);
-  elB.classList.add('comparing');
-
-  elA.style.transition = `left ${T_SLIDE}ms cubic-bezier(.4,0,.2,1), bottom ${T_LIFT}ms cubic-bezier(.4,0,.2,1)`;
-  elB.style.transition = `left ${T_SLIDE}ms cubic-bezier(.4,0,.2,1)`;
-  elA.style.left = slotX(posB) + 'px';
-  elB.style.left = slotX(posA) + 'px';
-  await wait(T_SLIDE + 200); // Pausa extra para leitura
-
-  elB.classList.remove('comparing');
-  [arr[posA], arr[posB]] = [arr[posB], arr[posA]];
-
-  /* ── FASE 3: Encaixar ── */
-  say('⬇️', `Encaixando bloco <strong>${valA}</strong>!`);
-  elA.classList.remove('active');
-  elA.style.transition = `bottom ${T_SNAP * 0.5}ms cubic-bezier(.4,0,.2,1)`;
-  elA.style.bottom = '0';
-  await wait(T_SNAP * 0.5);
-
-  elA.style.transition = `bottom ${T_SNAP * 0.25}ms ease-out`;
-  elA.style.bottom = '6px';
-  await wait(T_SNAP * 0.25);
-  elA.style.transition = `bottom ${T_SNAP * 0.25}ms ease-in`;
-  elA.style.bottom = '0';
-  await wait(T_SNAP * 0.25 + 200);
-
-  elA.style.zIndex = '';
-  refreshGlows();
+async function doPick(idx, val) {
+  const el = blockByVal(val);
+  say('⬆️', `Selecionando bloco <strong>${val}</strong> para inserir na sublista ordenada.`);
+  el.classList.add('active');
+  el.style.bottom = '110px';
+  el.style.zIndex = '50';
+  await wait(T_LIFT + 400);
 }
 
-async function doPlace(pos) {
-  const el  = blockAt(pos);
-  const val = arr[pos];
-  say('✅', `Bloco <strong>${val}</strong> na posição correta!`);
-  el.classList.add('comparing');
-  await wait(T_PLACE);
-  el.classList.remove('comparing');
+async function doCompare(idxI, idxJ, valI, valJ, result) {
+  const elI = blockByVal(valI);
+  const elJ = blockByVal(valJ);
+  
+  if (result === 'swap') {
+    say('🔍', `Comparando: <strong>${valJ}</strong> é maior que <strong>${valI}</strong>. Movendo <strong>${valJ}</strong> para a direita...`);
+    elJ.classList.add('comparing');
+    
+    // Troca visual
+    elI.style.left = slotX(idxJ) + 'px';
+    elJ.style.left = slotX(idxI) + 'px';
+    await wait(T_SLIDE + 600);
+    elJ.classList.remove('comparing');
+  } else {
+    say('🔍', `Comparando: <strong>${valJ}</strong> é menor que <strong>${valI}</strong>. Posição correta encontrada!`);
+    elJ.classList.add('comparing');
+    await wait(T_PLACE);
+    elJ.classList.remove('comparing');
+  }
+}
+
+async function doPlace(idx, val) {
+  const el = blockByVal(val);
+  say('⬇️', `Encaixando bloco <strong>${val}</strong> na sua nova posição.`);
+  el.classList.remove('active');
+  el.style.bottom = '0';
+  await wait(T_SNAP);
+  
+  // Bounce
+  el.style.transition = `bottom 200ms ease-out`;
+  el.style.bottom = '6px';
+  await wait(200);
+  el.style.transition = `bottom 200ms ease-in`;
+  el.style.bottom = '0';
+  await wait(200);
+  
+  el.style.transition = `left ${T_SLIDE}ms cubic-bezier(.4,0,.2,1), bottom ${T_LIFT}ms cubic-bezier(.4,0,.2,1)`;
+  el.style.zIndex = '';
   refreshGlows();
+  await wait(400);
 }
 
 async function doDone() {
-  say('🎉', '<strong>Ordenação completa!</strong> Todos os blocos encaixados!');
-  for (let i = 0; i < arr.length; i++) {
-    const el = blockAt(i);
-    el.classList.add('comparing');
+  say('🎉', '<strong>Ordenação completa!</strong> Todos os blocos foram inseridos corretamente.');
+  const blocks = Array.from(stage.querySelectorAll('.lego-block'));
+  for (const b of blocks) {
+    b.classList.add('comparing');
     await wait(150);
-    el.classList.remove('comparing');
+    b.classList.remove('comparing');
   }
   refreshGlows();
 }
@@ -641,12 +648,9 @@ async function autoSort() {
   }
 }
 
-function wait(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 btnShuf.addEventListener('click', () => { if (!busy) init(); });
-
 btnAuto.addEventListener('click', async () => {
   if (busy || cursor >= steps.length) return;
   await autoSort();
