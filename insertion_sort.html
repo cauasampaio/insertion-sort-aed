@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Insertion Sort — Lego 3D</title>
+  <style>
+/* ─── Reset e base ─── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg:          #d6e4f0;
+  --panel-bg:    #1a2a3a;
+  --panel-border:#2e4a6a;
+  --panel-text:  #a8d8ea;
+  --block-w:     80px;
+  --block-h:     80px;
+  --stud-r:      12px;
+  --stud-h:      10px;
+}
+
+body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.35) 0%, transparent 55%),
+    radial-gradient(circle at 80% 70%, rgba(180,210,240,0.4) 0%, transparent 55%);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ─── Painel de instruções flutuante ─── */
+#instruction-panel {
+  position: fixed;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel-bg);
+  border: 2px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px 28px 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 6px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07);
+  z-index: 100;
+  min-width: 320px;
+  max-width: 560px;
+}
+
+#instruction-icon { font-size: 1.5rem; flex-shrink: 0; }
+
+#instruction-text {
+  color: var(--panel-text);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+#instruction-text strong { color: #ffffff; }
+
+/* ─── Stage (área dos blocos) ─── */
+#stage {
+  perspective: 1100px;
+  perspective-origin: 50% 15%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 100px 60px 70px;
+}
+
+/* ─── Container dos blocos ─── */
+#blocks-container {
+  position: relative;
+}
+
+/* Sombra no chão */
+#blocks-container::after {
+  content: '';
+  position: absolute;
+  bottom: -18px;
+  left: -10px;
+  right: -10px;
+  height: 22px;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.18) 0%, transparent 75%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* ─── Bloco Lego ─── */
+.lego-block {
+  width: var(--block-w);
+  position: absolute;
+  bottom: 0;
+  transform: rotateX(-20deg);
+  transform-origin: bottom center;
+  transform-style: preserve-3d;
+  will-change: left, bottom, transform;
+  filter: drop-shadow(0 12px 8px rgba(0,0,0,0.22));
+}
+
+/* ─── Corpo do bloco ─── */
+.block-body {
+  width: var(--block-w);
+  height: var(--block-h);
+  border-radius: 6px 6px 4px 4px;
+  background: var(--color);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    inset 0 -4px 0 rgba(0,0,0,0.25),
+    inset 0 4px 0 rgba(255,255,255,0.22),
+    inset -4px 0 0 rgba(0,0,0,0.15),
+    0 8px 0 color-mix(in srgb, var(--color) 55%, #000);
+  transition: box-shadow 0.3s ease;
+}
+
+/* Face lateral direita */
+.block-body::after {
+  content: '';
+  position: absolute;
+  right: -9px;
+  top: 3px;
+  bottom: -7px;
+  width: 9px;
+  background: color-mix(in srgb, var(--color) 50%, #000);
+  border-radius: 0 3px 3px 0;
+  transform: skewY(-1.5deg);
+}
+
+/* Face inferior */
+.block-body::before {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 2px;
+  right: -7px;
+  height: 7px;
+  background: color-mix(in srgb, var(--color) 40%, #000);
+  border-radius: 0 0 4px 4px;
+  transform: skewX(-1.5deg);
+}
+
+/* ─── Número no bloco ─── */
+.block-number {
+  font-size: 1.85rem;
+  font-weight: 900;
+  color: rgba(255,255,255,0.93);
+  text-shadow: 0 2px 5px rgba(0,0,0,0.45);
+  position: relative;
+  z-index: 2;
+  letter-spacing: -1px;
+  pointer-events: none;
+}
+
+/* ─── Studs (pinos) no topo ─── */
+.studs-row {
+  position: absolute;
+  top: calc(-1 * var(--stud-h) - 4px);
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  z-index: 3;
+}
+
+.stud {
+  width: calc(var(--stud-r) * 2);
+  height: var(--stud-h);
+  background: color-mix(in srgb, var(--color) 82%, #fff);
+  border-radius: 50% 50% 50% 50% / 30% 30% 70% 70%;
+  box-shadow:
+    0 -3px 0 color-mix(in srgb, var(--color) 92%, #fff),
+    inset 0 -2px 3px rgba(0,0,0,0.2),
+    inset 0 2px 3px rgba(255,255,255,0.3);
+  position: relative;
+}
+
+/* Topo circular do stud */
+.stud::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(var(--stud-r) * 2);
+  height: 10px;
+  background: color-mix(in srgb, var(--color) 88%, #fff);
+  border-radius: 50%;
+  box-shadow:
+    0 -1px 0 rgba(255,255,255,0.4),
+    0 2px 2px rgba(0,0,0,0.15);
+}
+
+/* ─── Glow: posição correta ─── */
+.lego-block.status-correct .block-body {
+  box-shadow:
+    inset 0 -4px 0 rgba(0,0,0,0.25),
+    inset 0 4px 0 rgba(255,255,255,0.22),
+    inset -4px 0 0 rgba(0,0,0,0.15),
+    0 8px 0 color-mix(in srgb, var(--color) 55%, #000),
+    0 0 20px 5px rgba(40, 220, 80, 0.8),
+    0 0 48px 12px rgba(40, 220, 80, 0.3);
+}
+
+/* ─── Glow: posição errada ─── */
+.lego-block.status-wrong .block-body {
+  box-shadow:
+    inset 0 -4px 0 rgba(0,0,0,0.25),
+    inset 0 4px 0 rgba(255,255,255,0.22),
+    inset -4px 0 0 rgba(0,0,0,0.15),
+    0 8px 0 color-mix(in srgb, var(--color) 55%, #000),
+    0 0 20px 5px rgba(255, 55, 55, 0.8),
+    0 0 48px 12px rgba(255, 55, 55, 0.3);
+}
+
+/* ─── Glow: bloco ativo (sendo movido) ─── */
+.lego-block.active .block-body {
+  box-shadow:
+    inset 0 -4px 0 rgba(0,0,0,0.25),
+    inset 0 4px 0 rgba(255,255,255,0.22),
+    inset -4px 0 0 rgba(0,0,0,0.15),
+    0 8px 0 color-mix(in srgb, var(--color) 55%, #000),
+    0 0 28px 8px rgba(255, 220, 50, 0.9),
+    0 0 60px 18px rgba(255, 220, 50, 0.4);
+}
+
+/* ─── Pulso de comparação ─── */
+@keyframes compare-pulse {
+  0%, 100% { filter: brightness(1); }
+  50%       { filter: brightness(1.4); }
+}
+
+.lego-block.comparing {
+  animation: compare-pulse 0.28s ease 2;
+}
+
+/* ════════════════════════════════════════
+   BOTÕES LEGO
+════════════════════════════════════════ */
+#controls {
+  display: flex;
+  gap: 22px;
+  margin-top: 40px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.lego-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 0 6px 0;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: padding 0.08s ease;
+}
+
+.lego-btn:active {
+  padding: 6px 0 0 0;
+}
+
+.btn-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 10px 24px 12px;
+  border-radius: 8px 8px 5px 5px;
+  min-width: 126px;
+  position: relative;
+  transition: box-shadow 0.08s ease, transform 0.08s ease;
+}
+
+.lego-btn:active .btn-face {
+  transform: translateY(5px);
+}
+
+/* Cores individuais dos botões */
+#btn-shuffle .btn-face {
+  background: #f4a261;
+  box-shadow: 0 6px 0 #a0622e, inset 0 2px 0 rgba(255,255,255,0.28), inset 0 -2px 0 rgba(0,0,0,0.18);
+}
+#btn-shuffle:active .btn-face {
+  box-shadow: 0 1px 0 #a0622e, inset 0 2px 0 rgba(255,255,255,0.28), inset 0 -2px 0 rgba(0,0,0,0.18);
+}
+
+#btn-sort .btn-face {
+  background: #e63946;
+  box-shadow: 0 6px 0 #9b1a22, inset 0 2px 0 rgba(255,255,255,0.28), inset 0 -2px 0 rgba(0,0,0,0.18);
+}
+#btn-sort:active .btn-face {
+  box-shadow: 0 1px 0 #9b1a22, inset 0 2px 0 rgba(255,255,255,0.28), inset 0 -2px 0 rgba(0,0,0,0.18);
+}
+
+/* Studs decorativos nos botões */
+.btn-studs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 1px;
+}
+
+.btn-stud {
+  width: 14px;
+  height: 7px;
+  background: rgba(255,255,255,0.28);
+  border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%;
+  box-shadow: 0 -3px 0 rgba(255,255,255,0.18), inset 0 1px 2px rgba(0,0,0,0.12);
+  position: relative;
+}
+
+.btn-stud::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 8px;
+  background: rgba(255,255,255,0.22);
+  border-radius: 50%;
+}
+
+/* Botão desabilitado */
+.lego-btn:disabled { pointer-events: none; }
+.lego-btn:disabled .btn-face {
+  filter: grayscale(0.55) brightness(0.72);
+}
+
+/* ─── Responsividade ─── */
+@media (max-width: 680px) {
+  :root {
+    --block-w: 54px;
+    --block-h: 54px;
+    --stud-r: 8px;
+    --stud-h: 7px;
+  }
+  .block-number { font-size: 1.25rem; }
+  #instruction-panel { min-width: 260px; }
+  #controls { gap: 12px; }
+  .btn-face { min-width: 96px; font-size: 0.72rem; padding: 8px 14px 10px; }
+}
+  </style>
+</head>
+<body>
+
+  <!-- Painel de instruções flutuante -->
+  <div id="instruction-panel">
+    <div id="instruction-icon">🔧</div>
+    <div id="instruction-text">Pressione <strong>Ordenar Tudo</strong> para começar!</div>
+  </div>
+
+  <!-- Área principal dos blocos -->
+  <div id="stage">
+    <div id="blocks-container"></div>
+  </div>
+
+  <!-- Painel de controle -->
+  <div id="controls">
+    <button class="lego-btn" id="btn-shuffle">
+      <span class="btn-face">
+        <span class="btn-studs">
+          <span class="btn-stud"></span>
+          <span class="btn-stud"></span>
+          <span class="btn-stud"></span>
+        </span>
+        Embaralhar
+      </span>
+    </button>
+    <button class="lego-btn" id="btn-sort">
+      <span class="btn-face">
+        <span class="btn-studs">
+          <span class="btn-stud"></span>
+          <span class="btn-stud"></span>
+          <span class="btn-stud"></span>
+        </span>
+        Ordenar Tudo
+      </span>
+    </button>
+  </div>
+
+  <script>
+/* ─── Paleta de cores dos blocos ─── */
+const BLOCK_COLORS = [
+  '#e63946',
+  '#f4a261',
+  '#e9c46a',
+  '#2a9d8f',
+  '#457b9d',
+  '#9b5de5',
+  '#f15bb5',
+];
+
+/* ─── Constantes de tempo (ms) — AUMENTADAS PARA MAIOR LENTIDÃO ─── */
+const T_LIFT  = 800;   // duração da fase de levantamento (era 360)
+const T_SLIDE = 1000;  // duração do deslize lateral (era 400)
+const T_SNAP  = 700;   // duração do encaixe (era 340)
+const T_PLACE = 800;   // duração da confirmação de posição (era 300)
+const T_PAUSE = 600;   // pausa entre passos no modo automático (era 120)
+
+/* ─── Estado global ─── */
+let arr      = [];     // valores na ordem atual
+let colorMap = {};     // valor → cor
+let sorted   = [];     // array de referência ordenado
+let steps    = [];     // sequência de operações pré-computada
+let cursor   = 0;      // índice do próximo passo
+let busy     = false;  // trava de animação
+
+/* ─── Referências DOM ─── */
+const stage   = document.getElementById('blocks-container');
+const instrEl = document.getElementById('instruction-text');
+const iconEl  = document.getElementById('instruction-icon');
+const btnShuf = document.getElementById('btn-shuffle');
+const btnAuto = document.getElementById('btn-sort');
+
+/* ════════════════════════════════════════
+   INICIALIZAÇÃO
+════════════════════════════════════════ */
+function init() {
+  arr = fisherYates([1, 2, 3, 4, 5, 6, 7]);
+  colorMap = {};
+  arr.forEach((v, i) => { colorMap[v] = BLOCK_COLORS[i]; });
+  sorted  = [...arr].sort((a, b) => a - b);
+  steps   = precompute([...arr]);
+  cursor  = 0;
+  buildDOM();
+  say('🔧', 'Pressione <strong>Ordenar Tudo</strong> para visualizar!');
+  syncButtons();
+}
+
+/* ─── Fisher-Yates in-place ─── */
+function fisherYates(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* ════════════════════════════════════════
+   PRÉ-COMPUTAÇÃO DOS PASSOS
+════════════════════════════════════════ */
+function precompute(a) {
+  const ops = [];
+  for (let i = 1; i < a.length; i++) {
+    let j = i;
+    while (j > 0 && a[j - 1] > a[j]) {
+      ops.push({ op: 'swap', i: j, j: j - 1 });
+      [a[j], a[j - 1]] = [a[j - 1], a[j]];
+      j--;
+    }
+    ops.push({ op: 'place', i: j });
+  }
+  ops.push({ op: 'done' });
+  return ops;
+}
+
+/* ════════════════════════════════════════
+   CONSTRUÇÃO DO DOM
+════════════════════════════════════════ */
+const BLOCK_W = 80;
+const GAP     = 18;
+
+function buildDOM() {
+  stage.innerHTML = '';
+  const total  = arr.length;
+  const stageW = total * BLOCK_W + (total - 1) * GAP;
+  stage.style.width    = stageW + 'px';
+  stage.style.position = 'relative';
+  stage.style.height   = '140px';
+
+  arr.forEach((val, idx) => {
+    const el = makeBlock(val);
+    el.style.position = 'absolute';
+    el.style.left     = slotX(idx) + 'px';
+    el.style.bottom   = '0';
+    stage.appendChild(el);
+  });
+
+  refreshGlows();
+}
+
+function makeBlock(val) {
+  const wrap = document.createElement('div');
+  wrap.className = 'lego-block';
+  wrap.dataset.value = val;
+  wrap.style.setProperty('--color', colorMap[val]);
+  wrap.style.transition = `left ${T_SLIDE}ms cubic-bezier(.4,0,.2,1), bottom ${T_LIFT}ms cubic-bezier(.4,0,.2,1)`;
+
+  const studs = document.createElement('div');
+  studs.className = 'studs-row';
+  studs.innerHTML = '<span class="stud"></span><span class="stud"></span>';
+
+  const body = document.createElement('div');
+  body.className = 'block-body';
+
+  const num = document.createElement('span');
+  num.className = 'block-number';
+  num.textContent = val;
+
+  body.appendChild(num);
+  wrap.appendChild(studs);
+  wrap.appendChild(body);
+  return wrap;
+}
+
+function slotX(n) {
+  return n * (BLOCK_W + GAP);
+}
+
+function blockByVal(v) {
+  return stage.querySelector(`.lego-block[data-value="${v}"]`);
+}
+
+function blockAt(idx) {
+  return blockByVal(arr[idx]);
+}
+
+function refreshGlows() {
+  arr.forEach((val, i) => {
+    const el = blockByVal(val);
+    if (!el) return;
+    el.classList.remove('status-correct', 'status-wrong');
+    el.classList.add(val === sorted[i] ? 'status-correct' : 'status-wrong');
+  });
+}
+
+function say(icon, html) {
+  iconEl.textContent = icon;
+  instrEl.innerHTML  = html;
+}
+
+function syncButtons() {
+  const done = cursor >= steps.length;
+  btnShuf.disabled = busy;
+  btnAuto.disabled = busy || done;
+}
+
+async function runStep() {
+  if (busy || cursor >= steps.length) return;
+  busy = true;
+  syncButtons();
+
+  const s = steps[cursor++];
+
+  if (s.op === 'swap')  await doSwap(s.i, s.j);
+  if (s.op === 'place') await doPlace(s.i);
+  if (s.op === 'done')  await doDone();
+
+  busy = false;
+  syncButtons();
+}
+
+async function doSwap(posA, posB) {
+  const elA  = blockAt(posA);
+  const elB  = blockAt(posB);
+  const valA = arr[posA];
+  const valB = arr[posB];
+
+  /* ── FASE 1: Desencaixar ── */
+  say('⬆️', `Desencaixando bloco <strong>${valA}</strong>...`);
+  elA.classList.add('active');
+  elA.style.transition = `bottom ${T_LIFT}ms cubic-bezier(.4,0,.2,1)`;
+  elA.style.bottom = '110px';
+  elA.style.zIndex = '50';
+  await wait(T_LIFT + 200); // Pausa extra para leitura
+
+  /* ── FASE 2: Mover ── */
+  say('➡️', `Movendo <strong>${valA}</strong> → comparando com <strong>${valB}</strong>...`);
+  elB.classList.add('comparing');
+
+  elA.style.transition = `left ${T_SLIDE}ms cubic-bezier(.4,0,.2,1), bottom ${T_LIFT}ms cubic-bezier(.4,0,.2,1)`;
+  elB.style.transition = `left ${T_SLIDE}ms cubic-bezier(.4,0,.2,1)`;
+  elA.style.left = slotX(posB) + 'px';
+  elB.style.left = slotX(posA) + 'px';
+  await wait(T_SLIDE + 200); // Pausa extra para leitura
+
+  elB.classList.remove('comparing');
+  [arr[posA], arr[posB]] = [arr[posB], arr[posA]];
+
+  /* ── FASE 3: Encaixar ── */
+  say('⬇️', `Encaixando bloco <strong>${valA}</strong>!`);
+  elA.classList.remove('active');
+  elA.style.transition = `bottom ${T_SNAP * 0.5}ms cubic-bezier(.4,0,.2,1)`;
+  elA.style.bottom = '0';
+  await wait(T_SNAP * 0.5);
+
+  elA.style.transition = `bottom ${T_SNAP * 0.25}ms ease-out`;
+  elA.style.bottom = '6px';
+  await wait(T_SNAP * 0.25);
+  elA.style.transition = `bottom ${T_SNAP * 0.25}ms ease-in`;
+  elA.style.bottom = '0';
+  await wait(T_SNAP * 0.25 + 200);
+
+  elA.style.zIndex = '';
+  refreshGlows();
+}
+
+async function doPlace(pos) {
+  const el  = blockAt(pos);
+  const val = arr[pos];
+  say('✅', `Bloco <strong>${val}</strong> na posição correta!`);
+  el.classList.add('comparing');
+  await wait(T_PLACE);
+  el.classList.remove('comparing');
+  refreshGlows();
+}
+
+async function doDone() {
+  say('🎉', '<strong>Ordenação completa!</strong> Todos os blocos encaixados!');
+  for (let i = 0; i < arr.length; i++) {
+    const el = blockAt(i);
+    el.classList.add('comparing');
+    await wait(150);
+    el.classList.remove('comparing');
+  }
+  refreshGlows();
+}
+
+async function autoSort() {
+  while (cursor < steps.length) {
+    await runStep();
+    if (cursor < steps.length) await wait(T_PAUSE);
+  }
+}
+
+function wait(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+btnShuf.addEventListener('click', () => { if (!busy) init(); });
+
+btnAuto.addEventListener('click', async () => {
+  if (busy || cursor >= steps.length) return;
+  await autoSort();
+});
+
+init();
+  </script>
+</body>
+</html>
