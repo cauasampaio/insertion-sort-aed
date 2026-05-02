@@ -328,12 +328,17 @@ function init() {
   const newCount = getBlockCount();
   currentBlockCount = newCount;
   
-  // Criar array baseado no tamanho da tela
-  const baseArr = Array.from({length: newCount}, (_, i) => i + 1);
-  arr = fisherYates(baseArr);
+  // Gerar números aleatórios únicos entre 0 e 99
+  const uniqueNumbers = new Set();
+  while (uniqueNumbers.size < newCount) {
+    uniqueNumbers.add(Math.floor(Math.random() * 100));
+  }
+  arr = Array.from(uniqueNumbers);
   
   colorMap = {};
+  // Mapear cores baseadas nos valores originais para manter consistência visual
   arr.forEach((v, i) => { colorMap[v] = BLOCK_COLORS[i % BLOCK_COLORS.length]; });
+  
   sorted = [...arr].sort((a, b) => a - b);
   steps = precompute([...arr]);
   cursor = 0;
