@@ -303,191 +303,191 @@ body {
   </div>
 
   <script>
-const BLOCK_COLORS = ['#e63946', '#f4a261', '#e9c46a', '#2a9d8f', '#457b9d', '#9b5de5', '#f15bb5'];
-const T_LIFT = 800, T_SLIDE = 1000, T_SNAP = 700, T_PLACE = 1200, T_PAUSE = 800;
+    const BLOCK_COLORS = ['#e63946', '#f4a261', '#e9c46a', '#2a9d8f', '#457b9d', '#9b5de5', '#f15bb5'];
+    const T_LIFT = 800, T_SLIDE = 1000, T_SNAP = 700, T_PLACE = 1200, T_PAUSE = 800;
 
-let arr = [], colorMap = {}, sorted = [], steps = [], cursor = 0, busy = false;
-let currentBlockCount = 7;
+    let arr = [], colorMap = {}, sorted = [], steps = [], cursor = 0, busy = false;
+    let currentBlockCount = 7;
 
-const stage = document.getElementById('blocks-container');
-const instrEl = document.getElementById('instruction-text');
-const iconEl = document.getElementById('instruction-icon');
-const btnShuf = document.getElementById('btn-shuffle');
-const btnAuto = document.getElementById('btn-sort');
+    const stage = document.getElementById('blocks-container');
+    const instrEl = document.getElementById('instruction-text');
+    const iconEl = document.getElementById('instruction-icon');
+    const btnShuf = document.getElementById('btn-shuffle');
+    const btnAuto = document.getElementById('btn-sort');
 
-function getBlockCount() {
-  const width = window.innerWidth;
-  if (width < 480) return 3;
-  if (width < 600) return 4;
-  if (width < 768) return 5;
-  if (width < 900) return 6;
-  return 7;
-}
+    function getBlockCount() {
+      const width = window.innerWidth;
+      if (width < 480) return 3;
+      if (width < 600) return 4;
+      if (width < 768) return 5;
+      if (width < 900) return 6;
+      return 7;
+    }
 
-function init() {
-  const newCount = getBlockCount();
-  currentBlockCount = newCount;
-  
-  // Gerar números aleatórios únicos entre 0 e 99
-  const uniqueNumbers = new Set();
-  while (uniqueNumbers.size < newCount) {
-    uniqueNumbers.add(Math.floor(Math.random() * 100));
-  }
-  arr = Array.from(uniqueNumbers);
-  
-  colorMap = {};
-  // Mapear cores baseadas nos valores originais para manter consistência visual
-  arr.forEach((v, i) => { colorMap[v] = BLOCK_COLORS[i % BLOCK_COLORS.length]; });
-  
-  sorted = [...arr].sort((a, b) => a - b);
-  steps = precompute([...arr]);
-  cursor = 0;
-  buildDOM();
-  say('🔧', 'Pressione <strong>Ordenar Tudo</strong> para começar!');
-  syncButtons();
-}
+    function init() {
+      const newCount = getBlockCount();
+      currentBlockCount = newCount;
+      
+      // Gerar números aleatórios únicos entre 0 e 99
+      const uniqueNumbers = new Set();
+      while (uniqueNumbers.size < newCount) {
+        uniqueNumbers.add(Math.floor(Math.random() * 100));
+      }
+      arr = Array.from(uniqueNumbers);
+      
+      colorMap = {};
+      // Mapear cores baseadas nos valores originais para manter consistência visual
+      arr.forEach((v, i) => { colorMap[v] = BLOCK_COLORS[i % BLOCK_COLORS.length]; });
+      
+      sorted = [...arr].sort((a, b) => a - b);
+      steps = precompute([...arr]);
+      cursor = 0;
+      buildDOM();
+      say('🔧', 'Pressione <strong>Ordenar Tudo</strong> para começar!');
+      syncButtons();
+    }
 
-function fisherYates(a) {
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+    function fisherYates(a) {
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
 
-function precompute(a) {
-  const ops = [];
-  for (let i = 1; i < a.length; i++) {
-    let j = i;
-    ops.push({ op: 'pick', i: i, val: a[i] });
-    while (j > 0) {
-      if (a[j-1] > a[j]) {
-        ops.push({ op: 'compare', i: j, j: j-1, valI: a[j], valJ: a[j-1], result: 'swap' });
-        [a[j], a[j-1]] = [a[j-1], a[j]];
-        j--;
+    function precompute(a) {
+      const ops = [];
+      for (let i = 1; i < a.length; i++) {
+        let j = i;
+        ops.push({ op: 'pick', i: i, val: a[i] });
+        while (j > 0) {
+          if (a[j-1] > a[j]) {
+            ops.push({ op: 'compare', i: j, j: j-1, valI: a[j], valJ: a[j-1], result: 'swap' });
+            [a[j], a[j-1]] = [a[j-1], a[j]];
+            j--;
+          } else {
+            ops.push({ op: 'compare', i: j, j: j-1, valI: a[j], valJ: a[j-1], result: 'stop' });
+            break;
+          }
+        }
+        ops.push({ op: 'place', i: j, val: a[j] });
+      }
+      ops.push({ op: 'done' });
+      return ops;
+    }
+
+    function getStyles() {
+      const style = getComputedStyle(document.documentElement);
+      return {
+        w: parseInt(style.getPropertyValue('--block-w')),
+        g: parseInt(style.getPropertyValue('--gap'))
+      };
+    }
+
+    function buildDOM() {
+      stage.innerHTML = '';
+      const { w, g } = getStyles();
+      const total = arr.length;
+      const stageW = total * w + (total - 1) * g;
+      stage.style.width = stageW + 'px';
+      stage.style.height = (w + 60) + 'px';
+
+      arr.forEach((val, idx) => {
+        const el = makeBlock(val);
+        el.style.left = (idx * (w + g)) + 'px';
+        stage.appendChild(el);
+      });
+      refreshGlows();
+    }
+
+    function makeBlock(val) {
+      const wrap = document.createElement('div');
+      wrap.className = 'lego-block';
+      wrap.dataset.value = val;
+      wrap.style.setProperty('--color', colorMap[val]);
+      wrap.style.transition = `left ${T_SLIDE}ms cubic-bezier(.4,0,.2,1), bottom ${T_LIFT}ms cubic-bezier(.4,0,.2,1)`;
+      wrap.innerHTML = `<div class="studs-row"><span class="stud"></span><span class="stud"></span></div><div class="block-body"><span class="block-number">${val}</span></div>`;
+      return wrap;
+    }
+
+    function refreshGlows() {
+      const { w, g } = getStyles();
+      stage.querySelectorAll('.lego-block').forEach(el => {
+        const val = parseInt(el.dataset.value);
+        const idx = Math.round(parseFloat(el.style.left) / (w + g));
+        el.classList.remove('status-correct', 'status-wrong');
+        el.classList.add(val === sorted[idx] ? 'status-correct' : 'status-wrong');
+      });
+    }
+
+    function say(icon, html) { iconEl.textContent = icon; instrEl.innerHTML = html; }
+    function syncButtons() { btnShuf.disabled = busy; btnAuto.disabled = busy || cursor >= steps.length; }
+
+    async function runStep() {
+      if (busy || cursor >= steps.length) return;
+      busy = true; syncButtons();
+      const s = steps[cursor++];
+      if (s.op === 'pick') await doPick(s.val);
+      else if (s.op === 'compare') await doCompare(s.valI, s.valJ, s.result);
+      else if (s.op === 'place') await doPlace(s.val);
+      else if (s.op === 'done') await doDone();
+      busy = false; syncButtons();
+    }
+
+    async function doPick(val) {
+      const el = blockByVal(val);
+      say('⬆️', `Selecionando <strong>${val}</strong> para inserir.`);
+      el.classList.add('active');
+      el.style.bottom = '110px';
+      el.style.zIndex = '50';
+      await wait(T_LIFT + 400);
+    }
+
+    async function doCompare(valI, valJ, result) {
+      const elI = blockByVal(valI), elJ = blockByVal(valJ);
+      const { w, g } = getStyles();
+      if (result === 'swap') {
+        say('🔍', `<strong>${valJ} > ${valI}</strong>: movendo <strong>${valJ}</strong>.`);
+        elJ.classList.add('comparing');
+        const leftI = elI.style.left, leftJ = elJ.style.left;
+        elI.style.left = leftJ; elJ.style.left = leftI;
+        await wait(T_SLIDE + 600);
+        elJ.classList.remove('comparing');
       } else {
-        ops.push({ op: 'compare', i: j, j: j-1, valI: a[j], valJ: a[j-1], result: 'stop' });
-        break;
+        say('🔍', `<strong>${valJ} < ${valI}</strong>: posição encontrada!`);
+        elJ.classList.add('comparing');
+        await wait(T_PLACE);
+        elJ.classList.remove('comparing');
       }
     }
-    ops.push({ op: 'place', i: j, val: a[j] });
-  }
-  ops.push({ op: 'done' });
-  return ops;
-}
 
-function getStyles() {
-  const style = getComputedStyle(document.documentElement);
-  return {
-    w: parseInt(style.getPropertyValue('--block-w')),
-    g: parseInt(style.getPropertyValue('--gap'))
-  };
-}
+    async function doPlace(val) {
+      const el = blockByVal(val);
+      say('⬇️', `Encaixando <strong>${val}</strong>.`);
+      el.classList.remove('active');
+      el.style.bottom = '0';
+      await wait(T_SNAP);
+      el.style.zIndex = '';
+      refreshGlows();
+      await wait(400);
+    }
 
-function buildDOM() {
-  stage.innerHTML = '';
-  const { w, g } = getStyles();
-  const total = arr.length;
-  const stageW = total * w + (total - 1) * g;
-  stage.style.width = stageW + 'px';
-  stage.style.height = (w + 60) + 'px';
+    async function doDone() {
+      say('🎉', '<strong>Ordenação completa!</strong>');
+      stage.querySelectorAll('.lego-block').forEach(b => b.classList.add('comparing'));
+      await wait(1000);
+      stage.querySelectorAll('.lego-block').forEach(b => b.classList.remove('comparing'));
+    }
 
-  arr.forEach((val, idx) => {
-    const el = makeBlock(val);
-    el.style.left = (idx * (w + g)) + 'px';
-    stage.appendChild(el);
-  });
-  refreshGlows();
-}
+    function blockByVal(v) { return stage.querySelector(`.lego-block[data-value="${v}"]`); }
+    function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-function makeBlock(val) {
-  const wrap = document.createElement('div');
-  wrap.className = 'lego-block';
-  wrap.dataset.value = val;
-  wrap.style.setProperty('--color', colorMap[val]);
-  wrap.style.transition = `left ${T_SLIDE}ms cubic-bezier(.4,0,.2,1), bottom ${T_LIFT}ms cubic-bezier(.4,0,.2,1)`;
-  wrap.innerHTML = `<div class="studs-row"><span class="stud"></span><span class="stud"></span></div><div class="block-body"><span class="block-number">${val}</span></div>`;
-  return wrap;
-}
+    btnShuf.addEventListener('click', () => { if (!busy) init(); });
+    btnAuto.addEventListener('click', async () => { if (!busy) { while(cursor < steps.length) { await runStep(); await wait(T_PAUSE); } } });
 
-function refreshGlows() {
-  const { w, g } = getStyles();
-  stage.querySelectorAll('.lego-block').forEach(el => {
-    const val = parseInt(el.dataset.value);
-    const idx = Math.round(parseFloat(el.style.left) / (w + g));
-    el.classList.remove('status-correct', 'status-wrong');
-    el.classList.add(val === sorted[idx] ? 'status-correct' : 'status-wrong');
-  });
-}
+    window.addEventListener('resize', () => { if (!busy && getBlockCount() !== currentBlockCount) init(); });
 
-function say(icon, html) { iconEl.textContent = icon; instrEl.innerHTML = html; }
-function syncButtons() { btnShuf.disabled = busy; btnAuto.disabled = busy || cursor >= steps.length; }
-
-async function runStep() {
-  if (busy || cursor >= steps.length) return;
-  busy = true; syncButtons();
-  const s = steps[cursor++];
-  if (s.op === 'pick') await doPick(s.val);
-  else if (s.op === 'compare') await doCompare(s.valI, s.valJ, s.result);
-  else if (s.op === 'place') await doPlace(s.val);
-  else if (s.op === 'done') await doDone();
-  busy = false; syncButtons();
-}
-
-async function doPick(val) {
-  const el = blockByVal(val);
-  say('⬆️', `Selecionando <strong>${val}</strong> para inserir.`);
-  el.classList.add('active');
-  el.style.bottom = '110px';
-  el.style.zIndex = '50';
-  await wait(T_LIFT + 400);
-}
-
-async function doCompare(valI, valJ, result) {
-  const elI = blockByVal(valI), elJ = blockByVal(valJ);
-  const { w, g } = getStyles();
-  if (result === 'swap') {
-    say('🔍', `<strong>${valJ} > ${valI}</strong>: movendo <strong>${valJ}</strong>.`);
-    elJ.classList.add('comparing');
-    const leftI = elI.style.left, leftJ = elJ.style.left;
-    elI.style.left = leftJ; elJ.style.left = leftI;
-    await wait(T_SLIDE + 600);
-    elJ.classList.remove('comparing');
-  } else {
-    say('🔍', `<strong>${valJ} < ${valI}</strong>: posição encontrada!`);
-    elJ.classList.add('comparing');
-    await wait(T_PLACE);
-    elJ.classList.remove('comparing');
-  }
-}
-
-async function doPlace(val) {
-  const el = blockByVal(val);
-  say('⬇️', `Encaixando <strong>${val}</strong>.`);
-  el.classList.remove('active');
-  el.style.bottom = '0';
-  await wait(T_SNAP);
-  el.style.zIndex = '';
-  refreshGlows();
-  await wait(400);
-}
-
-async function doDone() {
-  say('🎉', '<strong>Ordenação completa!</strong>');
-  stage.querySelectorAll('.lego-block').forEach(b => b.classList.add('comparing'));
-  await wait(1000);
-  stage.querySelectorAll('.lego-block').forEach(b => b.classList.remove('comparing'));
-}
-
-function blockByVal(v) { return stage.querySelector(`.lego-block[data-value="${v}"]`); }
-function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-btnShuf.addEventListener('click', () => { if (!busy) init(); });
-btnAuto.addEventListener('click', async () => { if (!busy) { while(cursor < steps.length) { await runStep(); await wait(T_PAUSE); } } });
-
-window.addEventListener('resize', () => { if (!busy && getBlockCount() !== currentBlockCount) init(); });
-
-init();
+    init();
   </script>
 </body>
 </html>
