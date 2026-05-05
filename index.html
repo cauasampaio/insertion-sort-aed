@@ -427,14 +427,12 @@ body {
     function syncButtons() { btnShuf.disabled = busy; btnAuto.disabled = busy || cursor >= steps.length; }
 
     async function runStep() {
-      if (busy || cursor >= steps.length) return;
-      busy = true; syncButtons();
+      if (cursor >= steps.length) return;
       const s = steps[cursor++];
       if (s.op === 'pick') await doPick(s.val);
       else if (s.op === 'compare') await doCompare(s.valI, s.valJ, s.result);
       else if (s.op === 'place') await doPlace(s.val);
       else if (s.op === 'done') await doDone();
-      busy = false; syncButtons();
     }
 
     async function doPick(val) {
@@ -486,7 +484,18 @@ body {
     function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
     btnShuf.addEventListener('click', () => { if (!busy) init(); });
-    btnAuto.addEventListener('click', async () => { if (!busy) { while(cursor < steps.length) { await runStep(); await wait(T_PAUSE); } } });
+    btnAuto.addEventListener('click', async () => { 
+      if (!busy) { 
+        busy = true;
+        syncButtons();
+        while(cursor < steps.length) { 
+          await runStep(); 
+          await wait(T_PAUSE); 
+        } 
+        busy = false;
+        syncButtons();
+      } 
+    });
 
     window.addEventListener('resize', () => { if (!busy && getBlockCount() !== currentBlockCount) init(); });
 
